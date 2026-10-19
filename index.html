@@ -1,0 +1,799 @@
+<!DOCTYPE html>
+<html lang="zh-Hant-TW">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>高雄房價查詢站</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+<style>
+  :root{
+    --text:#111;
+    --sub:#555;
+    --line:#e2e2e2;
+    --bg:#fff;
+    --soft:#f6f6f6;
+    --red:#d0021b;
+  }
+  *{box-sizing:border-box;}
+  body{
+    margin:0;background:var(--bg);color:var(--text);
+    font-family:-apple-system,"PingFang TC","Noto Sans TC","Microsoft JhengHei",sans-serif;
+    line-height:1.5;
+  }
+  .wrap{max-width:1200px;margin:0 auto;padding:0 16px;}
+  header{border-bottom:2px solid var(--text);padding:20px 0 14px;}
+  header h1{margin:0;font-size:28px;letter-spacing:1px;}
+  header p{margin:4px 0 0;color:var(--sub);font-size:14px;}
+  .source-bar{
+    display:flex;flex-wrap:wrap;gap:10px;align-items:center;
+    margin:16px 0;padding:12px 14px;background:var(--soft);border:1px solid var(--line);
+    font-size:14px;
+  }
+  .source-bar strong{font-weight:700;}
+  .tag{display:inline-block;padding:2px 8px;border:1px solid var(--text);font-size:12px;}
+  .btn{
+    font:inherit;font-size:14px;padding:7px 14px;border:1px solid var(--text);
+    background:#fff;color:var(--text);cursor:pointer;
+  }
+  .btn:hover{background:var(--text);color:#fff;}
+  .btn.primary{background:var(--text);color:#fff;}
+  .btn.primary:hover{background:#333;}
+  .spacer{flex:1;}
+
+  .layout{display:grid;grid-template-columns:270px 1fr;gap:24px;align-items:start;}
+  .filters{border:1px solid var(--line);padding:16px;position:sticky;top:12px;}
+  .filters h2{font-size:17px;margin:0 0 12px;display:flex;justify-content:space-between;align-items:center;}
+  .toggle-filters{display:none;}
+  .field{margin-bottom:14px;}
+  .field label{display:block;font-size:13px;font-weight:700;margin-bottom:4px;}
+  .field input,.field select{
+    width:100%;font:inherit;font-size:14px;padding:7px 8px;border:1px solid #bbb;background:#fff;color:var(--text);
+  }
+  .field input:focus,.field select:focus{outline:2px solid var(--text);outline-offset:-1px;}
+  .range{display:flex;gap:6px;align-items:center;}
+  .range span{color:var(--sub);font-size:13px;}
+  .chips{display:flex;flex-wrap:wrap;gap:6px;}
+  .chip{
+    font:inherit;font-size:13px;padding:4px 10px;border:1px solid #bbb;background:#fff;cursor:pointer;color:var(--text);
+  }
+  .chip.on{background:var(--text);border-color:var(--text);color:#fff;}
+  .filters .actions{display:flex;gap:8px;}
+  .filters .actions .btn{flex:1;}
+
+  .cards{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:20px;}
+  .card{border:1px solid var(--line);padding:12px 14px;}
+  .card .k{font-size:13px;color:var(--sub);}
+  .card .v{font-size:24px;font-weight:700;margin-top:2px;white-space:nowrap;}
+  .card .v small{font-size:14px;font-weight:400;}
+  .price{color:var(--red);}
+
+  section.block{margin-bottom:24px;}
+  section.block h2{font-size:18px;margin:0 0 10px;padding-bottom:6px;border-bottom:1px solid var(--line);}
+  .chart-box{position:relative;height:340px;}
+  .chart-fallback{color:var(--sub);font-size:14px;}
+
+  .list-head{display:flex;flex-wrap:wrap;gap:10px;justify-content:space-between;align-items:center;margin-bottom:8px;}
+  .list-head select{font:inherit;font-size:14px;padding:5px 8px;border:1px solid #bbb;}
+  .table-wrap{overflow-x:auto;border:1px solid var(--line);}
+  table{border-collapse:collapse;width:100%;min-width:900px;font-size:14px;}
+  th,td{padding:9px 10px;border-bottom:1px solid var(--line);text-align:left;white-space:nowrap;}
+  th{background:var(--soft);font-weight:700;cursor:pointer;user-select:none;}
+  th.num,td.num{text-align:right;}
+  th .arrow{font-size:11px;margin-left:2px;}
+  tbody tr:hover{background:#fafafa;}
+  td.addr{white-space:normal;min-width:200px;}
+  td.proj{font-weight:700;}
+  .empty{padding:30px;text-align:center;color:var(--sub);}
+  .pager{display:flex;gap:6px;justify-content:center;align-items:center;margin-top:12px;flex-wrap:wrap;}
+  .pager .btn{padding:4px 10px;}
+  .pager .btn[disabled]{opacity:.35;cursor:default;background:#fff;color:var(--text);}
+
+  footer{border-top:1px solid var(--line);margin-top:30px;padding:16px 0 30px;font-size:13px;color:var(--sub);}
+  footer a{color:var(--text);}
+  .msg{font-size:13px;}
+  .msg.err{color:var(--red);}
+
+  @media (max-width:900px){
+    .layout{grid-template-columns:1fr;}
+    .filters{position:static;}
+    .toggle-filters{display:inline-block;}
+    .filters.collapsed .filter-body{display:none;}
+    .cards{grid-template-columns:repeat(2,1fr);}
+  }
+  @media (max-width:480px){
+    header h1{font-size:23px;}
+    .card .v{font-size:20px;}
+    .chart-box{height:300px;}
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="wrap">
+    <h1>高雄房價查詢站</h1>
+    <p>查詢高雄市各行政區的不動產實際成交行情｜給首購族、換屋族、學生與關心高雄房市的你</p>
+  </div>
+</header>
+
+<main class="wrap">
+
+  <div class="source-bar">
+    <span>目前資料：</span>
+    <strong id="srcName">內建範例資料</strong>
+    <span class="tag" id="srcTag">模擬資料・非真實成交</span>
+    <span id="srcCount"></span>
+    <span class="spacer"></span>
+    <input type="file" id="fileInput" accept=".csv,text/csv" multiple hidden>
+    <button class="btn primary" id="uploadBtn">上傳實價登錄 CSV</button>
+    <button class="btn" id="sampleBtn" hidden>改回範例資料</button>
+    <span class="msg" id="uploadMsg"></span>
+  </div>
+
+  <div class="layout">
+    <!-- 篩選區 -->
+    <aside class="filters collapsed" id="filters">
+      <h2>篩選條件 <button class="btn toggle-filters" id="toggleFilters">展開</button></h2>
+      <div class="filter-body">
+        <div class="field">
+          <label for="kw">關鍵字（路名／建案名稱）</label>
+          <input id="kw" type="search" placeholder="例如：博愛路、港都">
+        </div>
+        <div class="field">
+          <label for="district">行政區</label>
+          <select id="district"><option value="">全部行政區</option></select>
+        </div>
+        <div class="field">
+          <label>建物型態</label>
+          <div class="chips" id="typeChips"></div>
+        </div>
+        <div class="field">
+          <label>總價（萬元）</label>
+          <div class="range">
+            <input id="pMin" type="number" min="0" placeholder="最低">
+            <span>～</span>
+            <input id="pMax" type="number" min="0" placeholder="最高">
+          </div>
+        </div>
+        <div class="field">
+          <label>建物坪數（坪）</label>
+          <div class="range">
+            <input id="aMin" type="number" min="0" placeholder="最小">
+            <span>～</span>
+            <input id="aMax" type="number" min="0" placeholder="最大">
+          </div>
+        </div>
+        <div class="field">
+          <label for="age">屋齡</label>
+          <select id="age">
+            <option value="">不限</option>
+            <option value="0-5">5 年以下</option>
+            <option value="5-10">5～10 年</option>
+            <option value="10-20">10～20 年</option>
+            <option value="20-30">20～30 年</option>
+            <option value="30-999">30 年以上</option>
+          </select>
+        </div>
+        <div class="field">
+          <label for="rooms">房數</label>
+          <select id="rooms">
+            <option value="">不限</option>
+            <option value="0">開放格局／0 房</option>
+            <option value="1">1 房</option>
+            <option value="2">2 房</option>
+            <option value="3">3 房</option>
+            <option value="4">4 房以上</option>
+          </select>
+        </div>
+        <div class="actions">
+          <button class="btn" id="resetBtn">清除條件</button>
+        </div>
+      </div>
+    </aside>
+
+    <!-- 結果區 -->
+    <div>
+      <div class="cards">
+        <div class="card"><div class="k">符合筆數</div><div class="v" id="sCount">0</div></div>
+        <div class="card"><div class="k">平均每坪單價</div><div class="v price" id="sAvg">—</div></div>
+        <div class="card"><div class="k">最高總價</div><div class="v price" id="sMax">—</div></div>
+        <div class="card"><div class="k">最低總價</div><div class="v price" id="sMin">—</div></div>
+      </div>
+
+      <section class="block">
+        <h2>各行政區平均每坪單價</h2>
+        <div class="chart-box"><canvas id="chart"></canvas></div>
+        <p class="chart-fallback" id="chartFallback" hidden>圖表元件載入失敗（可能沒有網路），其他功能仍可正常使用。</p>
+      </section>
+
+      <section class="block">
+        <div class="list-head">
+          <h2 style="border:0;margin:0;padding:0;">成交明細</h2>
+          <label style="font-size:14px;">排序：
+            <select id="sortSel">
+              <option value="date-desc">交易日期（新→舊）</option>
+              <option value="date-asc">交易日期（舊→新）</option>
+              <option value="total-desc">總價（高→低）</option>
+              <option value="total-asc">總價（低→高）</option>
+              <option value="unit-desc">每坪單價（高→低）</option>
+              <option value="unit-asc">每坪單價（低→高）</option>
+              <option value="ping-desc">坪數（大→小）</option>
+              <option value="age-asc">屋齡（新→舊）</option>
+            </select>
+          </label>
+        </div>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th data-sort="date">交易日期<span class="arrow"></span></th>
+                <th>行政區</th>
+                <th>建案名稱</th>
+                <th>地址</th>
+                <th>型態</th>
+                <th class="num" data-sort="total">總價<span class="arrow"></span></th>
+                <th class="num" data-sort="unit">每坪單價<span class="arrow"></span></th>
+                <th class="num" data-sort="ping">坪數<span class="arrow"></span></th>
+                <th class="num" data-sort="age">屋齡<span class="arrow"></span></th>
+                <th>樓層</th>
+                <th>格局</th>
+              </tr>
+            </thead>
+            <tbody id="tbody"></tbody>
+          </table>
+        </div>
+        <div class="pager" id="pager"></div>
+      </section>
+    </div>
+  </div>
+</main>
+
+<footer>
+  <div class="wrap">
+    <p>
+      範例資料為程式產生的模擬資料，只用來展示功能，不代表真實成交價格。<br>
+      真實資料請至
+      <a href="https://plvr.land.moi.gov.tw/DownloadOpenData" target="_blank" rel="noopener">內政部不動產成交案件實際資訊資料供應系統</a>
+      或
+      <a href="https://data.gov.tw/dataset/145101" target="_blank" rel="noopener">政府資料開放平台（高雄市實價登錄）</a>
+      下載高雄市「不動產買賣」或「預售屋買賣」CSV，再用上方按鈕上傳。可一次上傳多個檔案。<br>
+      坪數換算：1 坪 = 3.3058 平方公尺。每坪單價已盡量扣除車位價格與面積。建案名稱主要出現在預售屋資料，中古屋多半沒有。
+    </p>
+  </div>
+</footer>
+
+<script>
+(function(){
+  "use strict";
+
+  const PING = 3.3058;
+  const PAGE_SIZE = 50;
+  const TYPES = ["大樓","華廈","公寓","透天","套房","其他"];
+
+  /* ========== 工具函式 ========== */
+  const $ = id => document.getElementById(id);
+  const esc = s => String(s == null ? "" : s).replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+  const fmt = (n, d=0) => n.toLocaleString("zh-TW", {minimumFractionDigits:d, maximumFractionDigits:d});
+  const fmtWan = yuan => fmt(Math.round(yuan/10000)) + " 萬";
+  const fmtUnit = yuan => fmt(yuan/10000, 1) + " 萬/坪";
+
+  function normType(t){
+    t = t || "";
+    if (t.includes("套房")) return "套房";
+    if (t.includes("大樓")) return "大樓";
+    if (t.includes("華廈")) return "華廈";
+    if (t.includes("公寓")) return "公寓";
+    if (t.includes("透天")) return "透天";
+    return "其他";
+  }
+
+  /* ========== 內建範例資料（模擬） ========== */
+  function mulberry32(a){
+    return function(){
+      a |= 0; a = a + 0x6D2B79F5 | 0;
+      let t = Math.imul(a ^ a >>> 15, 1 | a);
+      t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t;
+      return ((t ^ t >>> 14) >>> 0) / 4294967296;
+    };
+  }
+
+  function buildSample(){
+    const rnd = mulberry32(20261019);
+    const r = (a,b) => a + rnd()*(b-a);
+    const ri = (a,b) => Math.floor(r(a,b+1));
+    const pick = arr => arr[Math.floor(rnd()*arr.length)];
+
+    // [行政區, 基準每坪單價(萬), 筆數權重, 都會程度 0~1]
+    const D = [
+      ["鼓山區",42,7,1],["前鎮區",40,7,1],["左營區",38,8,1],["苓雅區",33,7,1],["新興區",30,4,1],
+      ["前金區",32,3,1],["鹽埕區",28,2,1],["三民區",28,9,1],["楠梓區",32,7,.9],["鳳山區",28,9,.9],
+      ["小港區",24,5,.8],["仁武區",27,5,.7],["鳥松區",27,3,.6],["大寮區",21,4,.6],["橋頭區",26,3,.6],
+      ["岡山區",24,4,.6],["大社區",22,2,.5],["林園區",17,2,.4],["路竹區",20,2,.4],["梓官區",19,1.5,.4],
+      ["旗津區",20,1,.5],["彌陀區",15,1,.3],["永安區",13,.8,.2],["燕巢區",16,1,.3],["阿蓮區",15,.8,.2],
+      ["湖內區",17,1,.3],["茄萣區",15,1,.3],["大樹區",16,1,.3],["旗山區",13,1,.2],["美濃區",12,.8,.1],
+      ["田寮區",9,.4,.1],["六龜區",9,.4,0],["甲仙區",8,.3,0],["杉林區",10,.4,0],["內門區",9,.4,0],
+      ["茂林區",7,.2,0],["桃源區",6,.2,0],["那瑪夏區",6,.2,0]
+    ];
+    const ROADS = {
+      "鼓山區":["美術東二路","美術館路","明誠四路","裕誠路","中華一路","臨海二路"],
+      "前鎮區":["成功二路","中華五路","擴建路","光華二路","忠勤路","凱旋四路"],
+      "左營區":["博愛三路","重愛路","文自路","明華一路","富民路","華夏路"],
+      "苓雅區":["四維四路","青年一路","光華一路","五福一路","中正一路","輔仁路"],
+      "新興區":["中山一路","民族二路","七賢一路","八德二路","林森一路"],
+      "前金區":["中正四路","成功一路","自強二路","七賢二路"],
+      "鹽埕區":["大勇路","五福四路","七賢三路","建國四路"],
+      "三民區":["建工路","大順二路","九如一路","民族一路","鼎山街","大昌二路"],
+      "楠梓區":["德民路","後昌路","土庫一路","藍昌路","樂群路","高楠公路"],
+      "鳳山區":["青年路二段","建國路二段","文化路","光遠路","經武路","五甲二路"],
+      "小港區":["宏平路","漢民路","沿海一路","平和南路"],
+      "仁武區":["八德西路","仁雄路","高楠公路","鳳仁路"],
+      "鳥松區":["本館路","大埤路","澄清路"],
+      "大寮區":["鳳屏一路","光明路","進學路"],
+      "橋頭區":["經武路","橋南路","成功北路"],
+      "岡山區":["岡山路","中山北路","壽天路","維仁路"]
+    };
+    const GENERIC = ["中正路","中山路","民族路","自由路","民生路","光復路","成功路","和平路"];
+    const P1 = ["港都","美術","亞灣","愛河","鳳凰","澄清","晴空","海灣","日光","雲頂","青川","河堤","森活","若山","京城","璞真"];
+    const P2 = ["一號院","翠景","雅境","觀邸","學府","之星","大苑","悅府","臻品","水岸","天韻","晴空樹"];
+
+    const total = D.reduce((s,d)=>s+d[2],0);
+    const N = 900;
+    const out = [];
+
+    // 交易日期：2025-10 ～ 2026-09
+    const start = new Date(2025,9,1).getTime(), end = new Date(2026,8,30).getTime();
+
+    for (const [name, base, w, urban] of D){
+      const n = Math.max(3, Math.round(N * w / total));
+      for (let i=0;i<n;i++){
+        // 依都會程度決定建物型態
+        const x = rnd();
+        let type;
+        if (urban >= .8) type = x<.55?"大樓":x<.70?"華廈":x<.84?"公寓":x<.93?"透天":"套房";
+        else if (urban >= .4) type = x<.40?"大樓":x<.52?"華廈":x<.62?"公寓":x<.95?"透天":"套房";
+        else type = x<.10?"大樓":x<.16?"華廈":x<.22?"公寓":"透天";
+
+        let ping, age, totalFloors, factor;
+        switch(type){
+          case "大樓": ping=r(24,62); age=Math.max(0,Math.round(r(-4,26))); totalFloors=ri(12,32); factor=1; break;
+          case "華廈": ping=r(25,45); age=ri(12,35); totalFloors=ri(7,10); factor=.82; break;
+          case "公寓": ping=r(24,40); age=ri(30,50); totalFloors=ri(4,5); factor=.6; break;
+          case "透天": ping=r(35,95); age=ri(3,45); totalFloors=ri(2,5); factor=.72; break;
+          default:     ping=r(8,18);  age=ri(5,30); totalFloors=ri(10,20); factor=1.02;
+        }
+        const ageF = age<=3 ? 1.22 : age<=10 ? 1.08 : age<=20 ? .95 : age<=30 ? .82 : .7;
+        const unitWan = Math.max(4, base * factor * ageF * r(.86,1.14));
+        const ptotal = Math.round(unitWan * ping) * 10000;
+
+        const floor = type==="透天" ? "全" : String(ri(1,totalFloors));
+        let rooms = type==="套房" ? 1 : ping<28 ? ri(1,2) : ping<40 ? ri(2,3) : ping<60 ? ri(3,4) : ri(4,6);
+        const halls = type==="套房" ? ri(0,1) : (rooms>=2?2:1);
+        const baths = type==="套房" ? 1 : Math.max(1, Math.min(4, rooms-1 + (type==="透天"?1:0)));
+
+        const project = ((type==="大樓"||type==="華廈") && age<=15 && rnd()<.85) || (type==="套房" && rnd()<.5)
+          ? pick(P1)+pick(P2) : "";
+
+        const road = pick(ROADS[name] || GENERIC);
+        const addr = "高雄市" + name + road + ri(1,600) + "號" + (type==="透天" ? "" : "（" + floor + "樓）");
+        const dt = new Date(start + rnd()*(end-start));
+
+        out.push({
+          district:name, project, addr, type,
+          total:ptotal, ping, unit:ptotal/ping, age,
+          floor: type==="透天" ? "全棟" : floor+"/"+totalFloors+"F",
+          rooms, layout: rooms+"房"+halls+"廳"+baths+"衛",
+          date: dt.getFullYear()+"-"+String(dt.getMonth()+1).padStart(2,"0")+"-"+String(dt.getDate()).padStart(2,"0")
+        });
+      }
+    }
+    return out;
+  }
+
+  /* ========== CSV 解析 ========== */
+  function parseCSV(text){
+    const rows = []; let row = []; let cur = ""; let q = false;
+    for (let i=0;i<text.length;i++){
+      const c = text[i];
+      if (q){
+        if (c === '"'){ if (text[i+1] === '"'){ cur += '"'; i++; } else q = false; }
+        else cur += c;
+      } else {
+        if (c === '"') q = true;
+        else if (c === ","){ row.push(cur); cur=""; }
+        else if (c === "\n"){ row.push(cur); rows.push(row); row=[]; cur=""; }
+        else if (c !== "\r") cur += c;
+      }
+    }
+    if (cur !== "" || row.length){ row.push(cur); rows.push(row); }
+    return rows;
+  }
+
+  const ALIASES = {
+    district:["鄉鎮市區","行政區"],
+    target:["交易標的","交易標的種類"],
+    addr:["土地位置建物門牌","土地區段位置建物區段門牌","代表地號或門牌","門牌"],
+    type:["建物型態"],
+    total:["總價元","房地總價","總價"],
+    area:["建物移轉總面積平方公尺","建物移轉總面積","建物移轉面積"],
+    parkPrice:["車位總價元","車位總價格","車位總價"],
+    parkArea:["車位移轉總面積平方公尺","車位移轉總面積","車位總持分面積"],
+    date:["交易年月日","交易日期"],
+    floor:["移轉層次","代表建號層次"],
+    totalFloors:["總樓層數","代表建號總層數"],
+    built:["建築完成年月","代表建號建築完成日期"],
+    age:["代表建號屋齡","屋齡"],
+    rooms:["建物現況格局-房","幾房"],
+    halls:["建物現況格局-廳","幾廳"],
+    baths:["建物現況格局-衛","幾衛"],
+    project:["建案名稱"]
+  };
+  const norm = s => String(s||"").replace(/^\uFEFF/,"").replace(/[\s()（）\/]/g,"");
+
+  function mapHeader(header){
+    const h = header.map(norm);
+    const idx = {};
+    for (const key in ALIASES){
+      idx[key] = -1;
+      for (const a of ALIASES[key].map(norm)){
+        let i = h.indexOf(a);
+        if (i < 0) i = h.findIndex(x => x.startsWith(a));
+        if (i >= 0){ idx[key] = i; break; }
+      }
+    }
+    // 「總價」別名可能誤配到「車位總價」，修正
+    if (idx.total >= 0 && h[idx.total].includes("車位")){
+      idx.total = h.findIndex(x => (x.startsWith("總價") || x.startsWith("房地總價")) && !x.includes("車位"));
+    }
+    return idx;
+  }
+
+  function parseROCDate(s){
+    s = String(s||"").trim();
+    if (!s) return null;
+    let y,m,d;
+    if (/[\/\-.]/.test(s)){
+      const p = s.split(/[\/\-.]/).map(Number);
+      [y,m,d] = [p[0],p[1]||1,p[2]||1];
+    } else {
+      const t = s.replace(/\D/g,"");
+      if (t.length === 7){ y=+t.slice(0,3); m=+t.slice(3,5); d=+t.slice(5,7); }
+      else if (t.length === 6){ y=+t.slice(0,3); m=+t.slice(3,5)||1; d=1; }
+      else if (t.length === 8){ y=+t.slice(0,4); m=+t.slice(4,6); d=+t.slice(6,8); }
+      else if (t.length === 5){ y=+t.slice(0,3); m=+t.slice(3,5); d=1; }
+      else return null;
+    }
+    if (!y) return null;
+    if (y < 1911) y += 1911;
+    if (m<1||m>12) m = 1;
+    if (d<1||d>31) d = 1;
+    return new Date(y, m-1, d);
+  }
+  const ymd = dt => dt.getFullYear()+"-"+String(dt.getMonth()+1).padStart(2,"0")+"-"+String(dt.getDate()).padStart(2,"0");
+
+  function rowsToRecords(rows){
+    let hi = rows.findIndex(r => r.some(c => /鄉鎮市區|行政區/.test(c)) && r.some(c => /總價/.test(c)));
+    if (hi < 0) throw new Error("找不到欄位標題，請確認是實價登錄 CSV");
+    const idx = mapHeader(rows[hi]);
+    if (idx.total < 0 || idx.area < 0) throw new Error("缺少「總價」或「建物移轉面積」欄位");
+    const get = (r,k) => idx[k] >= 0 ? (r[idx[k]]||"").trim() : "";
+    const num = v => { const n = parseFloat(String(v).replace(/,/g,"")); return isNaN(n) ? 0 : n; };
+
+    const recs = [];
+    for (let i=hi+1;i<rows.length;i++){
+      const r = rows[i];
+      if (r.length < 3) continue;
+      let total = num(get(r,"total"));
+      const area = num(get(r,"area"));
+      if (!total || !area) continue;                     // 跳過英文標題列、純土地等
+      const target = get(r,"target");
+      if (target && !/建物|房地/.test(target)) continue;   // 只留含建物的交易
+
+      let pPrice = num(get(r,"parkPrice"));
+      const pArea = num(get(r,"parkArea"));
+      recs.push({_t:total, _a:area, _pp:pPrice, _pa:pArea, r});
+    }
+    // 若總價單位看起來是「萬元」，換算成元
+    const sorted = recs.map(x=>x._t).sort((a,b)=>a-b);
+    const median = sorted[Math.floor(sorted.length/2)] || 0;
+    const mult = median > 0 && median < 100000 ? 10000 : 1;
+
+    const out = [];
+    for (const x of recs){
+      const r = x.r;
+      const total = x._t * mult;
+      const pp = x._pp * mult;
+      let netArea = x._a, netTotal = total;
+      if (pp > 0 && pp < total && x._pa > 0 && x._pa < x._a){ netArea = x._a - x._pa; netTotal = total - pp; }
+      const ping = x._a / PING;
+      const unit = netTotal / (netArea / PING);
+
+      const dt = parseROCDate(get(r,"date"));
+      let age = parseFloat(get(r,"age"));
+      if (isNaN(age)){
+        const b = parseROCDate(get(r,"built"));
+        age = (b && dt) ? Math.max(0, Math.round((dt - b) / (365.25*86400000))) : null;
+      }
+      let district = get(r,"district").replace(/^高雄市/,"");
+      if (district && !/區$/.test(district)) district += "區";
+
+      const rooms = get(r,"rooms"), halls = get(r,"halls"), baths = get(r,"baths");
+      const fl = get(r,"floor"), tf = get(r,"totalFloors");
+
+      out.push({
+        district, project:get(r,"project"), addr:get(r,"addr"),
+        type:normType(get(r,"type")), rawType:get(r,"type"),
+        total, ping, unit, age,
+        floor: fl ? (fl + (tf ? "/" + tf : "")) : (tf || ""),
+        rooms: rooms === "" ? null : parseInt(rooms,10),
+        layout: rooms !== "" ? rooms+"房"+(halls||0)+"廳"+(baths||0)+"衛" : "",
+        date: dt ? ymd(dt) : ""
+      });
+    }
+    return out;
+  }
+
+  function decode(buf){
+    let t = new TextDecoder("utf-8").decode(buf);
+    const bad = (t.match(/\uFFFD/g)||[]).length;
+    if (bad > 5){
+      try { t = new TextDecoder("big5").decode(buf); } catch(e){}
+    }
+    return t;
+  }
+
+  /* ========== 狀態 ========== */
+  const SAMPLE = buildSample();
+  let DATA = SAMPLE;
+  let filtered = [];
+  let page = 1;
+  let sortKey = "date", sortDir = "desc";
+  const typeOn = new Set();
+  let chart = null;
+
+  /* ========== 介面初始化 ========== */
+  function buildTypeChips(){
+    const box = $("typeChips");
+    box.innerHTML = "";
+    for (const t of TYPES){
+      const b = document.createElement("button");
+      b.className = "chip" + (typeOn.has(t) ? " on" : "");
+      b.textContent = t;
+      b.type = "button";
+      b.onclick = () => { typeOn.has(t) ? typeOn.delete(t) : typeOn.add(t); b.classList.toggle("on"); page=1; update(); };
+      box.appendChild(b);
+    }
+  }
+
+  function buildDistricts(){
+    const sel = $("district");
+    const cur = sel.value;
+    const counts = {};
+    DATA.forEach(d => { if (d.district) counts[d.district] = (counts[d.district]||0)+1; });
+    const names = Object.keys(counts).sort((a,b) => counts[b]-counts[a]);
+    sel.innerHTML = '<option value="">全部行政區</option>' +
+      names.map(n => `<option value="${esc(n)}">${esc(n)}（${counts[n]}）</option>`).join("");
+    if (names.includes(cur)) sel.value = cur;
+  }
+
+  function setSource(name, isSample){
+    $("srcName").textContent = name;
+    $("srcTag").hidden = !isSample;
+    $("sampleBtn").hidden = isSample;
+    $("srcCount").textContent = "共 " + fmt(DATA.length) + " 筆";
+  }
+
+  /* ========== 篩選與排序 ========== */
+  function applyFilters(){
+    const kw = $("kw").value.trim().toLowerCase();
+    const dist = $("district").value;
+    const pMin = parseFloat($("pMin").value), pMax = parseFloat($("pMax").value);
+    const aMin = parseFloat($("aMin").value), aMax = parseFloat($("aMax").value);
+    const ageV = $("age").value, roomV = $("rooms").value;
+    let ageLo = null, ageHi = null;
+    if (ageV){ [ageLo, ageHi] = ageV.split("-").map(Number); }
+
+    filtered = DATA.filter(d => {
+      if (kw && !((d.addr||"").toLowerCase().includes(kw) || (d.project||"").toLowerCase().includes(kw))) return false;
+      if (dist && d.district !== dist) return false;
+      if (typeOn.size && !typeOn.has(d.type)) return false;
+      const wan = d.total/10000;
+      if (!isNaN(pMin) && wan < pMin) return false;
+      if (!isNaN(pMax) && wan > pMax) return false;
+      if (!isNaN(aMin) && d.ping < aMin) return false;
+      if (!isNaN(aMax) && d.ping > aMax) return false;
+      if (ageV){ if (d.age == null) return false; if (d.age < ageLo || d.age >= ageHi) return false; }
+      if (roomV !== ""){
+        if (d.rooms == null) return false;
+        const rv = +roomV;
+        if (rv === 4 ? d.rooms < 4 : d.rooms !== rv) return false;
+      }
+      return true;
+    });
+
+    const dir = sortDir === "asc" ? 1 : -1;
+    filtered.sort((a,b) => {
+      let x = a[sortKey], y = b[sortKey];
+      if (x == null || x === "") return 1;
+      if (y == null || y === "") return -1;
+      return (x > y ? 1 : x < y ? -1 : 0) * dir;
+    });
+  }
+
+  /* ========== 畫面更新 ========== */
+  function renderStats(){
+    const n = filtered.length;
+    $("sCount").textContent = fmt(n) + " 筆";
+    if (!n){ ["sAvg","sMax","sMin"].forEach(id => $(id).textContent = "—"); return; }
+    const avg = filtered.reduce((s,d)=>s+d.unit,0)/n;
+    let mx = -Infinity, mn = Infinity;
+    filtered.forEach(d => { if (d.total>mx) mx=d.total; if (d.total<mn) mn=d.total; });
+    $("sAvg").innerHTML = fmt(avg/10000,1) + " <small>萬/坪</small>";
+    $("sMax").innerHTML = fmt(Math.round(mx/10000)) + " <small>萬</small>";
+    $("sMin").innerHTML = fmt(Math.round(mn/10000)) + " <small>萬</small>";
+  }
+
+  function renderChart(){
+    if (typeof Chart === "undefined"){ $("chartFallback").hidden = false; return; }
+    const g = {};
+    filtered.forEach(d => {
+      if (!d.district) return;
+      (g[d.district] = g[d.district] || {s:0,n:0});
+      g[d.district].s += d.unit; g[d.district].n++;
+    });
+    const arr = Object.entries(g).map(([k,v]) => [k, v.s/v.n/10000, v.n]).sort((a,b)=>b[1]-a[1]);
+    const labels = arr.map(a=>a[0]);
+    const values = arr.map(a=>+a[1].toFixed(1));
+    const counts = arr.map(a=>a[2]);
+
+    const box = $("chart").parentElement;
+    box.style.height = Math.max(240, Math.min(arr.length * 22 + 60, 900)) + "px";
+
+    if (chart){
+      chart.data.labels = labels;
+      chart.data.datasets[0].data = values;
+      chart.$counts = counts;
+      chart.update();
+      return;
+    }
+    chart = new Chart($("chart"), {
+      type:"bar",
+      data:{ labels, datasets:[{ label:"平均每坪單價（萬）", data:values, backgroundColor:"#d0021b", borderWidth:0, barPercentage:.75 }] },
+      options:{
+        indexAxis:"y", responsive:true, maintainAspectRatio:false, animation:{duration:300},
+        plugins:{
+          legend:{display:false},
+          tooltip:{ callbacks:{ label: c => " " + c.parsed.x + " 萬/坪（" + (chart.$counts[c.dataIndex]) + " 筆）" } }
+        },
+        scales:{
+          x:{ ticks:{ color:"#111", callback:v=>v+" 萬" }, grid:{ color:"#eee" } },
+          y:{ ticks:{ color:"#111", autoSkip:false, font:{size:12} }, grid:{ display:false } }
+        }
+      }
+    });
+    chart.$counts = counts;
+  }
+
+  function renderTable(){
+    const tb = $("tbody");
+    const pages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
+    if (page > pages) page = pages;
+    const slice = filtered.slice((page-1)*PAGE_SIZE, page*PAGE_SIZE);
+
+    if (!slice.length){
+      tb.innerHTML = '<tr><td colspan="11" class="empty">沒有符合條件的成交資料，試著放寬篩選條件。</td></tr>';
+    } else {
+      tb.innerHTML = slice.map(d => `
+        <tr>
+          <td>${esc(d.date)}</td>
+          <td>${esc(d.district)}</td>
+          <td class="proj">${d.project ? esc(d.project) : '<span style="color:#999;font-weight:400">—</span>'}</td>
+          <td class="addr">${esc(d.addr)}</td>
+          <td title="${esc(d.rawType||d.type)}">${esc(d.type)}</td>
+          <td class="num price"><b>${fmtWan(d.total)}</b></td>
+          <td class="num price">${fmtUnit(d.unit)}</td>
+          <td class="num">${fmt(d.ping,1)}</td>
+          <td class="num">${d.age == null ? "—" : d.age + " 年"}</td>
+          <td>${esc(d.floor)}</td>
+          <td>${esc(d.layout)}</td>
+        </tr>`).join("");
+    }
+
+    const pg = $("pager");
+    if (pages <= 1){ pg.innerHTML = ""; return; }
+    pg.innerHTML = `
+      <button class="btn" data-p="1" ${page===1?"disabled":""}>最前</button>
+      <button class="btn" data-p="${page-1}" ${page===1?"disabled":""}>上一頁</button>
+      <span style="font-size:14px;padding:0 6px;">第 ${page} / ${pages} 頁</span>
+      <button class="btn" data-p="${page+1}" ${page===pages?"disabled":""}>下一頁</button>
+      <button class="btn" data-p="${pages}" ${page===pages?"disabled":""}>最後</button>`;
+  }
+
+  function renderArrows(){
+    document.querySelectorAll("th[data-sort]").forEach(th => {
+      th.querySelector(".arrow").textContent = th.dataset.sort === sortKey ? (sortDir==="asc"?"▲":"▼") : "";
+    });
+    $("sortSel").value = sortKey + "-" + sortDir;
+  }
+
+  function update(){
+    applyFilters();
+    renderStats();
+    renderChart();
+    renderTable();
+    renderArrows();
+  }
+
+  /* ========== 事件 ========== */
+  let t;
+  const debounced = () => { clearTimeout(t); t = setTimeout(()=>{ page=1; update(); }, 200); };
+  ["kw","pMin","pMax","aMin","aMax"].forEach(id => $(id).addEventListener("input", debounced));
+  ["district","age","rooms"].forEach(id => $(id).addEventListener("change", ()=>{ page=1; update(); }));
+
+  $("sortSel").addEventListener("change", e => {
+    [sortKey, sortDir] = e.target.value.split("-"); page=1; update();
+  });
+  document.querySelectorAll("th[data-sort]").forEach(th => th.addEventListener("click", () => {
+    const k = th.dataset.sort;
+    if (sortKey === k) sortDir = sortDir === "asc" ? "desc" : "asc";
+    else { sortKey = k; sortDir = (k==="age") ? "asc" : "desc"; }
+    page=1; update();
+  }));
+  $("pager").addEventListener("click", e => {
+    const p = e.target.dataset && e.target.dataset.p;
+    if (p && !e.target.disabled){ page = +p; renderTable(); $("tbody").closest("section").scrollIntoView({behavior:"smooth"}); }
+  });
+
+  $("resetBtn").addEventListener("click", () => {
+    ["kw","pMin","pMax","aMin","aMax"].forEach(id => $(id).value = "");
+    ["district","age","rooms"].forEach(id => $(id).value = "");
+    typeOn.clear(); buildTypeChips(); page=1; update();
+  });
+
+  $("toggleFilters").addEventListener("click", () => {
+    const f = $("filters");
+    f.classList.toggle("collapsed");
+    $("toggleFilters").textContent = f.classList.contains("collapsed") ? "展開" : "收合";
+  });
+
+  $("uploadBtn").addEventListener("click", () => $("fileInput").click());
+  $("fileInput").addEventListener("change", async e => {
+    const files = [...e.target.files];
+    if (!files.length) return;
+    const msg = $("uploadMsg");
+    msg.className = "msg"; msg.textContent = "讀取中…";
+    try{
+      let all = [];
+      for (const f of files){
+        const buf = await f.arrayBuffer();
+        const recs = rowsToRecords(parseCSV(decode(buf)));
+        all = all.concat(recs);
+      }
+      if (!all.length) throw new Error("檔案中沒有可用的建物成交資料");
+      DATA = all;
+      setSource(files.length === 1 ? files[0].name : files.length + " 個檔案", false);
+      buildDistricts(); page=1; update();
+      msg.textContent = "✓ 已載入 " + fmt(all.length) + " 筆";
+    } catch(err){
+      msg.className = "msg err";
+      msg.textContent = "載入失敗：" + err.message;
+    }
+    e.target.value = "";
+  });
+
+  $("sampleBtn").addEventListener("click", () => {
+    DATA = SAMPLE; setSource("內建範例資料", true);
+    $("uploadMsg").textContent = "";
+    buildDistricts(); page=1; update();
+  });
+
+  /* ========== 啟動 ========== */
+  if (window.matchMedia("(min-width:901px)").matches) $("filters").classList.remove("collapsed");
+  $("toggleFilters").textContent = $("filters").classList.contains("collapsed") ? "展開" : "收合";
+  buildTypeChips();
+  buildDistricts();
+  setSource("內建範例資料", true);
+  update();
+})();
+</script>
+</body>
+</html>
