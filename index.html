@@ -141,7 +141,9 @@
       <div class="filter-body">
         <div class="field">
           <label for="kw">關鍵字（路名／建案名稱）</label>
-          <input id="kw" type="search" placeholder="例如：博愛、京城">
+          <input id="kw" type="search" placeholder="例如：博愛、京城" list="projList" autocomplete="off">
+          <datalist id="projList"></datalist>
+          <small id="kwHint" style="display:block;color:var(--sub);font-size:12px;margin-top:4px;"></small>
         </div>
         <div class="field">
           <label for="district">行政區</label>
@@ -308,6 +310,9 @@
     return a.length % 2 ? a[m] : (a[m-1]+a[m])/2;
   };
 
+  // 搜尋用：全形轉半形、統一台／臺、忽略空白與標點、不分大小寫
+  const normSearch = s => String(s||"").normalize("NFKC").toLowerCase().replace(/臺/g,"台").replace(/[\s．.·・、,，\-－_]/g,"");
+
   function normType(t){
     t = t || "";
     for (const k of ["大樓","華廈","公寓","透天","套房"]) if (t.includes(k)) return k;
@@ -449,7 +454,8 @@
   }
 
   /* ========== 狀態 ========== */
-  const BUILTIN = decodeBuiltin(RAW);
+  const addKeys = arr => { arr.forEach(d => { d.key = normSearch((d.addr||"") + "|" + (d.project||"")); }); return arr; };
+  const BUILTIN = addKeys(decodeBuiltin(RAW));
   let DATA = BUILTIN;
   let filtered = [];
   let page = 1;
@@ -488,6 +494,12 @@
       names.map(n => `<option value="${esc(n)}">${esc(n)}（${fmt(counts[n])} 筆）</option>`).join("");
     if (names.includes(cur)) sel.value = cur;
 
+    const pc = {};
+    DATA.forEach(d => { if (d.project) pc[d.project] = (pc[d.project]||0)+1; });
+    $("projList").innerHTML = Object.keys(pc).sort((a,b)=>pc[b]-pc[a])
+      .map(n => `<option value="${esc(n)}">${esc(n)}（${pc[n]} 筆）</option>`).join("");
+    $("kwHint").textContent = Object.keys(pc).length ? "可搜尋 " + Object.keys(pc).length + " 個預售建案；成屋請用路名搜尋" : "此資料沒有建案名稱，請用路名搜尋";
+
     const ys = $("year"), ycur = ys.value;
     const yc = {};
     DATA.forEach(d => { const y = Math.floor(d.date/10000); yc[y] = (yc[y]||0)+1; });
@@ -505,7 +517,7 @@
 
   /* ========== 篩選與排序 ========== */
   function applyFilters(){
-    const kw = $("kw").value.trim().toLowerCase();
+    const kw = normSearch($("kw").value);
     const dist = $("district").value, kind = $("kind").value, year = $("year").value;
     const pMin = parseFloat($("pMin").value), pMax = parseFloat($("pMax").value);
     const aMin = parseFloat($("aMin").value), aMax = parseFloat($("aMax").value);
@@ -516,7 +528,7 @@
 
     filtered = DATA.filter(d => {
       if (exSp && d.special) return false;
-      if (kw && !((d.addr||"").toLowerCase().includes(kw) || (d.project||"").toLowerCase().includes(kw))) return false;
+      if (kw && !d.key.includes(kw)) return false;
       if (dist && d.district !== dist) return false;
       if (kind !== "" && d.pre !== (kind === "1")) return false;
       if (year && Math.floor(d.date/10000) !== +year) return false;
@@ -696,7 +708,7 @@
     try{
       let all = [];
       for (const f of files){
-        const recs = rowsToRecords(parseCSV(decode(await f.arrayBuffer())));
+        const recs = addKeys(rowsToRecords(parseCSV(decode(await f.arrayBuffer()))));
         all = all.concat(recs);
       }
       if (!all.length) throw new Error("檔案中沒有可用的房屋成交資料");
